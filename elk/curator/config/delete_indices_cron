@@ -1,0 +1,2 @@
+#!/bin/sh
+* * * * * root curator --config /opt/config/config_file.yml /opt/config/action_file.yml

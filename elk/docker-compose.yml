@@ -1,0 +1,79 @@
+version: '3.2'
+volumes:
+  elasticsearchdata:
+
+services:
+  elasticsearch:
+    image: "acn-adcc-elasticsearch:${TAG:-latest}"
+    ports:
+      - 9200:9200
+    build:
+      context: .
+      dockerfile: ./elasticsearch/Dockerfile
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adcc2018prdELASTICSEARCHAPP}
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - ES_HEAP_SIZE=128m
+      - MAX_LOCKED_MEMORY=100000
+    volumes:
+      - type: 'volume'
+        source: elasticsearchdata
+        target: /usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+
+  kibana:
+    image: "acn-adcc-kibana:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: ./kibana/Dockerfile
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+
+  logstash:
+    image: "acn-adcc-logstash:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: ./logstash/Dockerfile
+    ports:
+      - 28777:28777
+    environment:
+      - "HTTP_HOST=0.0.0.0"
+      - "XPACK_MONITORING_ELASTICSEARCH_URL=http://elasticsearch:9200"
+      - "XPACK_MONITORING_ELASTICSEARCH_USERNAME=elastic"
+      - "XPACK_MONITORING_ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-adcc2018prdELASTICSEARCHAPP}"
+      - "LOG_LEVEL=info"
+      # - "XPACK_MONITORING_ENABLED=false"
+      # - "CONFIG_TEST_AND_EXIT=true"
+    entrypoint: bash
+    command:
+      - "/usr/share/logstash/wait-for-it.sh"
+      - "elasticsearch:9200"
+      - "-t"
+      - "60"
+      - "--"
+      - "/usr/local/bin/docker-entrypoint"
+      - "/usr/share/logstash/bin/logstash"
+    depends_on:
+      - elasticsearch
+
+  curator:
+    image: "acn-adcc-curator:${TAG:-latest}"
+    build:
+      context: .
+      dockerfile: ./curator/Dockerfile
+    environment:
+      - CRON_STRINGS=* * * * * root curator --config /opt/config/config_file.yml /opt/config/action_file.yml
+    depends_on:
+      - elasticsearch
